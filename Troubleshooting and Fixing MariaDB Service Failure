@@ -1,0 +1,80 @@
+Troubleshooting and Fixing MariaDB Service Failure
+
+## Objective
+Investigate and resolve a critical database connection issue in the Stratos DC environment where the Nautilus application was unable to connect to the backend database. The task involved diagnosing a failed MariaDB service on the database server (`stdb01`), identifying root causes via system logs, and restoring database connectivity.
+
+## Environment & Tools
+* **Server:** `stdb01` (Stratos DC Database Server)
+* **Service:** MariaDB 10.5
+* **Tools:** SSH, systemd (`systemctl`, `journalctl`), Linux File Permissions (`chown`, `chmod`)
+
+---
+
+## Step-by-Step Execution
+
+### 1. Connect to the Database Server
+Connected to the `stdb01` server via the jump host and escalated to the `root` user to perform administrative troubleshooting.
+```bash
+ssh peter@stdb01
+sudo su -
+
+```
+
+### 2. Diagnose the Service Failure
+
+Checked the current status of the MariaDB service. It was reported as `inactive (dead)` and failing to start.
+
+```bash
+systemctl status mariadb
+systemctl start mariadb
+
+```
+
+When the start command failed, I queried the systemd journal to pinpoint the exact failure reason:
+
+```bash
+journalctl -xeu mariadb.service
+
+```
+
+### 3. Apply the Fix
+
+The logs revealed a permissions error during the database directory preparation phase. The `mariadb-prepare-db-dir` process could not change ownership of `/var/lib/mysql`. I corrected the ownership and directory permissions to ensure the `mysql` user had full access.
+
+```bash
+chown -R mysql:mysql /var/lib/mysql
+chmod 755 /var/lib/mysql
+
+```
+
+### 4. Restart and Enable the Service
+
+With the permissions corrected, I successfully started the MariaDB service and enabled it to persist across reboots.
+
+```bash
+systemctl start mariadb
+systemctl enable mariadb
+systemctl status mariadb
+
+```
+
+### 5. Verify Connectivity
+
+Confirmed that MariaDB was actively running and listening on its default port (`3306`), and successfully executed a test query to list the databases.
+
+```bash
+# Verify port availability
+ss -tulnp | grep 3306
+
+# Test local database login and query execution
+mysql -u root -e "SHOW DATABASES;"
+
+```
+
+---
+
+## Troubleshooting & Learnings
+
+* **Error Faced:** `mariadb.service: Control process exited, code=exited, status=1`. The specific journalctl logs indicated: `Cannot change ownership of the database... Check that you have the necessary permissions...`
+* **Root Cause:** The MariaDB data directory (`/var/lib/mysql`) was missing the correct `mysql:mysql` user and group ownership, preventing the service from reading/writing necessary database and socket files on startup.
+* **Key Takeaway:** When a systemd service fails to start, blindly restarting it is ineffective. Always rely on `journalctl -xeu <service_name>` to inspect the pre-execution logs. In database environments, file ownership and strict permissions on the data directory are frequent culprits for startup failures.
