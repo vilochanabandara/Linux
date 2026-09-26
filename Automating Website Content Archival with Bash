@@ -1,0 +1,96 @@
+```markdown
+Automating Website Content Archival with Bash
+
+## Objective
+Develop a bash script to automate the backup of static website content. The script needs to compress a specific web directory into a zip archive, store it locally in a temporary directory, and securely copy it to a remote storage server. A key constraint was ensuring the script could run automatically without password prompts or requiring `sudo` privileges.
+
+## Environment & Tools
+* **Source Server:** App Server 3 (`stapp03` - user: `banner`)
+* **Destination Server:** Nautilus Storage Server (`ststor01` - user: `natasha`)
+* **Tools:** Bash scripting, `zip` utility, SSH / SCP (Key-based Authentication)
+
+---
+
+## Step-by-Step Execution
+
+### 1. Connect and Verify Prerequisites
+Connected to App Server 3 and verified that the `zip` package was installed, as it is essential for the archiving process.
+```bash
+ssh banner@stapp03
+sudo yum install -y zip
+# Package zip was already installed
+
+```
+
+### 2. Configure Passwordless SSH (For Automation)
+
+Since the script must copy files to the remote storage server without manual password entry or `sudo`, I generated an SSH key pair for the `banner` user and copied it to the `natasha` user on the storage server.
+
+```bash
+ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
+ssh-copy-id natasha@ststor01
+
+# Tested the connection to ensure no password was requested
+ssh natasha@ststor01 "echo Connection Successful"
+
+```
+
+### 3. Prepare Local and Remote Directories
+
+Created the required directories (`/archives` and `/scripts`) on both servers and updated their ownership to ensure our non-root users had write permissions.
+
+```bash
+# On App Server 3
+sudo mkdir -p /archives /scripts
+sudo chown -R banner:banner /archives /scripts
+
+# On Storage Server (via SSH)
+ssh natasha@ststor01 "sudo mkdir -p /archives && sudo chown -R natasha:natasha /archives"
+
+```
+
+### 4. Create the Bash Script
+
+Created the automation script `/scripts/beta_archive.sh`. The script creates the zip archive and transfers it using `scp`.
+
+```bash
+cat << 'EOF' > /scripts/beta_archive.sh
+#!/bin/bash
+
+# Create zip archive of /var/www/html/beta into /archives/xfusioncorp_beta.zip
+zip -r /archives/xfusioncorp_beta.zip /var/www/html/beta
+
+# Copy archive to Nautilus Storage Server (ststor01) under /archives/
+scp /archives/xfusioncorp_beta.zip natasha@ststor01:/archives/
+EOF
+
+# Make the script executable
+chmod +x /scripts/beta_archive.sh
+
+```
+
+### 5. Execute and Verify
+
+Ran the script as the standard user and verified that the archive was successfully created locally and transferred to the remote storage server.
+
+```bash
+/scripts/beta_archive.sh
+
+# Verify local archive
+ls -lh /archives/xfusioncorp_beta.zip
+
+# Verify remote archive on Storage Server
+ssh natasha@ststor01 "ls -lh /archives/xfusioncorp_beta.zip"
+
+```
+
+---
+
+## Troubleshooting & Learnings
+
+* **Key Takeaway - Service Accounts & Automation:** Relying on `sudo` inside automation scripts is an anti-pattern because it disrupts unattended execution. By adjusting directory ownership (`chown`) ahead of time, the script can safely run as a standard user (`banner`).
+* **Key Takeaway - Passwordless SCP:** For cross-server data transfers in automated scripts, configuring SSH key-based authentication (`ssh-keygen` and `ssh-copy-id`) is mandatory to prevent the script from hanging while waiting for a password prompt.
+
+```
+
+```
