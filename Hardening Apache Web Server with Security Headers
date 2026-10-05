@@ -1,0 +1,106 @@
+```markdown
+
+## Objective
+Enhance the security posture of the Apache web server on App Server 2 by configuring essential HTTP response headers. The task also required changing the default Apache listening port to `3000` and setting up a custom index page to serve as a health check/landing page.
+
+## Environment & Tools
+* **Server:** App Server 2 (`stapp02` - user: `steve`)
+* **Web Server:** Apache (`httpd`) on CentOS Stream
+* **Tools:** SSH, `systemctl`, `sed`, `curl`
+
+---
+
+## Step-by-Step Execution
+
+### 1. Connect and Elevate Privileges
+Connected to App Server 2 and switched to the `root` user to perform web server configurations.
+```bash
+ssh steve@stapp02
+sudo su -
+
+```
+
+### 2. Install and Configure Apache
+
+Installed the Apache web server package and modified the main configuration file to listen on port `3000` instead of the default port `80`.
+
+```bash
+yum install -y httpd
+sed -i 's/^Listen 80/Listen 3000/' /etc/httpd/conf/httpd.conf
+
+```
+
+### 3. Create the Landing Page
+
+Created a custom `index.html` file in the default document root.
+
+```bash
+echo "Welcome to the xFusionCorp Industries!" > /var/www/html/index.html
+
+```
+
+### 4. Apply Security Headers
+
+Instead of modifying the main `httpd.conf` directly, I followed best practices by creating a dedicated configuration file (`security.conf`) in the `/etc/httpd/conf.d/` directory. This leverages Apache's `mod_headers` to inject the required security headers into every HTTP response.
+
+```bash
+cat << EOF > /etc/httpd/conf.d/security.conf
+Header always set X-XSS-Protection "1; mode=block"
+Header always set X-Frame-Options "SAMEORIGIN"
+Header always set X-Content-Type-Options "nosniff"
+EOF
+
+```
+
+### 5. Start and Enable the Service
+
+Started the Apache service and enabled it to persist across server reboots.
+
+```bash
+systemctl start httpd
+systemctl enable httpd
+systemctl status httpd
+
+```
+
+### 6. Verification
+
+Tested the configuration locally using `curl` to fetch the HTTP headers.
+
+```bash
+curl -I http://localhost:3000
+
+```
+
+**Output:**
+
+```text
+HTTP/1.1 200 OK
+Date: Mon, 05 Oct 2026 16:37:18 GMT
+Server: Apache/2.4.62 (CentOS Stream)
+X-XSS-Protection: 1; mode=block
+X-Frame-Options: SAMEORIGIN
+X-Content-Type-Options: nosniff
+Last-Modified: Mon, 05 Oct 2026 16:33:18 GMT
+ETag: "27-65d1a707f5b68"
+Accept-Ranges: bytes
+Content-Length: 39
+Content-Type: text/html; charset=UTF-8
+
+```
+
+---
+
+## Learnings & Key Takeaways
+
+* **Modular Configuration:** Placing custom directives in `/etc/httpd/conf.d/security.conf` rather than appending them to the main `httpd.conf` makes managing and upgrading Apache much cleaner.
+* **Security Header Functions:**
+* `X-XSS-Protection: 1; mode=block`: Instructs the browser to block the response if it detects a Cross-Site Scripting (XSS) attack.
+* `X-Frame-Options: SAMEORIGIN`: Protects against Clickjacking by ensuring the page can only be displayed in a frame on the same origin as the page itself.
+* `X-Content-Type-Options: nosniff`: Prevents browsers from MIME-sniffing a response away from the declared content-type, mitigating drive-by download attacks.
+
+
+
+```
+
+```
