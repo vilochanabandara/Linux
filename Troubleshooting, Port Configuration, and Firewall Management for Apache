@@ -1,0 +1,79 @@
+```markdown
+
+## Objective
+Identify and resolve Apache (`httpd`) service failures across three Nautilus Application Servers (`stapp01`, `stapp02`, `stapp03`). The task required standardizing the configuration so that Apache listens on a custom port (`6400`) with a specific DocumentRoot (`/var/www/html`), and configuring the firewall to allow traffic without completely disabling it.
+
+## Environment & Tools
+* **Servers:** App Server 1, 2, and 3 (`stapp01`, `stapp02`, `stapp03`)
+* **Web Server:** Apache (`httpd`)
+* **Tools:** SSH, `vi`/`vim`, `systemctl`, `iptables`, `curl`
+
+---
+
+## Step-by-Step Execution
+
+### 1. Identify and Install/Verify Apache
+Connected to each application server to verify the state of the web server. If it was missing, I installed it.
+```bash
+ssh tony@stapp01  # (Repeated for steve@stapp02 and banner@stapp03)
+sudo yum install httpd -y
+
+```
+
+### 2. Configure the Custom Port and Document Root
+
+Edited the main Apache configuration file (`/etc/httpd/conf/httpd.conf`) to change the default listening port from 80 to 6400 and ensure the DocumentRoot was correct.
+
+```bash
+vi /etc/httpd/conf/httpd.conf
+# Changed: Listen 80 -> Listen 6400
+# Verified: DocumentRoot "/var/www/html"
+
+```
+
+### 3. Open the Firewall for Port 6400
+
+The environment didn't have `firewalld` installed, so I managed the firewall rules directly using `iptables`. I inserted a rule to accept TCP traffic on port 6400.
+
+```bash
+iptables -I INPUT -p tcp --dport 6400 -j ACCEPT
+
+```
+
+### 4. Start and Enable the Apache Service
+
+Started the Apache daemon and enabled it to run on boot.
+
+```bash
+systemctl start httpd
+systemctl enable httpd
+
+```
+
+### 5. Final Verification from Jump Host
+
+Once all three servers were configured and their services were running, I tested cross-network connectivity from the central jump host.
+
+```bash
+curl http://stapp01:6400/
+curl http://stapp02:6400/
+curl http://stapp03:6400/
+
+```
+
+---
+
+## Troubleshooting & Learnings
+
+* **Firewall Tooling:** Attempted to use `firewall-cmd`, but discovered the servers were running raw `iptables`. Adapted by inserting the rule at the top of the INPUT chain (`iptables -I INPUT -p tcp --dport 6400 -j ACCEPT`) to ensure it bypassed any default reject rules.
+* **Curl Protocol Error (`SSL routines::packet length too long`):** Accidentally tested the connection using `https://stapp01:6400/` instead of `http://`. This throws an SSL packet length error because curl attempts a TLS handshake on a plain-text HTTP port. Switched to `http://` to resolve it.
+* **Apache Configuration Syntax Errors:** On `stapp03`, Apache failed to start. Instead of guessing, I used `journalctl -xeu httpd.service` to inspect the logs.
+* *Error 1:* `Invalid command 'Listen 6400', perhaps misspelled...` (Fixed typo).
+* *Error 2:* `DocumentRoot '/var/www/html;' is not a directory` (Found an accidental trailing semicolon on line 124).
+* **Key Takeaway:** Systemd logs (`systemctl status` and `journalctl`) are invaluable for pinpointing the exact line number of syntax errors in configuration files.
+
+
+
+```
+
+```
