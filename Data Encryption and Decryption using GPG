@@ -1,0 +1,76 @@
+```markdown
+
+## Objective
+Secure confidential data for transfer by encrypting text files, and decode received secure data by decrypting it. The task involved managing GPG keyrings, importing provided public and private keys, and performing file-level cryptographic operations on the Nautilus Storage Server.
+
+## Environment & Tools
+* **Server:** Nautilus Storage Server (`ststor01` - user: `natasha` / `root`)
+* **Cryptography Tool:** GnuPG (`gpg`)
+* **Key User ID:** `kodekloud@kodekloud.com`
+
+---
+
+## Step-by-Step Execution
+
+### 1. Connect and Elevate Privileges
+Connected to the Storage Server and switched to the `root` user to access the confidential files located directly in the `/home/` directory.
+```bash
+ssh natasha@ststor01
+sudo su -
+
+```
+
+### 2. Import Public and Private Keys
+
+Imported the provided GPG keys into the server's local keyring. This created the necessary `trustdb` and initialized GPG for the root user.
+
+```bash
+gpg --import /home/public_key.asc
+gpg --import /home/private_key.asc
+
+```
+
+### 3. Encrypt the Confidential File
+
+Encrypted the target text file using the imported public key for the user `kodekloud@kodekloud.com`. Used the `--armor` flag to output the encrypted file in an ASCII-armored format (`.asc`) which is easier to transmit than raw binary.
+
+```bash
+gpg --armor --output /home/encrypted_me.asc --recipient kodekloud@kodekloud.com --encrypt /home/encrypt_me.txt
+
+```
+
+*Note: GPG prompted a warning that the key was not certified with a trusted signature. I manually acknowledged this (`y`) to proceed with the encryption.*
+
+### 4. Decrypt the Received Data
+
+Decrypted the received `.asc` file back into readable plain text. The system prompted for the private key/symmetric passphrase (`kodekloud`) to complete the operation.
+
+```bash
+gpg --output /home/decrypted_me.txt --decrypt /home/decrypt_me.asc
+
+```
+
+### 5. Verification
+
+Verified the directory to ensure the new files were created successfully, and read the decrypted file to confirm the data was intact.
+
+```bash
+ls -l /home/
+cat /home/decrypted_me.txt
+
+```
+
+**Decrypted Output:**
+
+> "Welcome to xFusionCorp Industries. This is KodeKloud System Administration Lab"
+
+---
+
+## Troubleshooting & Learnings
+
+* **GPG Trust Model Warnings:** When encrypting the file, GPG threw a warning: `There is no assurance this key belongs to the named user`. This happens when you import a public key but haven't explicitly signed it or assigned a trust level to it in your local GPG database. For automated tasks or one-off operations, you can override this by confirming with `y`, but in production, you would typically use `gpg --edit-key` to trust the key first.
+* **Path Context:** Attempted to read the file using `cat decrypted_me.txt` and got a "No such file or directory" error because my current working directory was `/root/`, not `/home/`. Using absolute paths (`cat /home/decrypted_me.txt`) is always the safest bet when working across different system directories.
+
+```
+
+```
